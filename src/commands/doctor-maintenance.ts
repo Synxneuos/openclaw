@@ -88,7 +88,6 @@ export async function beginDoctorMaintenance(params: {
     if (!repairStoresMayBeOpen) {
       return;
     }
-    repairStoresMayBeOpen = false;
     const [{ closeOpenClawAgentDatabasesAsync }, { closeOpenClawStateDatabaseByPath }] =
       await Promise.all([
         import("../state/openclaw-agent-db.js"),
@@ -102,6 +101,7 @@ export async function beginDoctorMaintenance(params: {
     try {
       await closeStores();
     } finally {
+      repairStoresMayBeOpen = false;
       for (const coordinator of coordinators.splice(0).toReversed()) {
         coordinator.release();
       }
