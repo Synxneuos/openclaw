@@ -97,7 +97,7 @@ async function expectPreviewLedger(root: string, runId: string, before: string[]
   );
   expect(after.filter((entry) => !ledgerArtifacts.includes(entry))).toEqual(before);
 
-  const status = runUpdateProcess(root, ["update", "status", "--json"]);
+  const status = runUpdateProcess(root, ["update", "status", "--timeout", "1", "--json"]);
   expect(status.error).toBeUndefined();
   expect(status.status, status.stderr).toBe(0);
   const report = JSON.parse(status.stdout);
@@ -199,7 +199,14 @@ process.stdin.resume();
     const configBefore = await fs.readFile(configPath);
     const treeBefore = await snapshotTree(root);
 
-    const result = runUpdateProcess(root, ["update", "--dry-run", "--no-restart", "--json"]);
+    const result = runUpdateProcess(root, [
+      "update",
+      "--dry-run",
+      "--no-restart",
+      "--timeout",
+      "1",
+      "--json",
+    ]);
 
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
@@ -234,7 +241,14 @@ process.stdin.resume();
     };
     const treeBefore = await snapshotTree(root);
 
-    const result = runUpdateProcess(root, ["--update", "--dry-run", "--no-restart", "--json"]);
+    const result = runUpdateProcess(root, [
+      "--update",
+      "--dry-run",
+      "--no-restart",
+      "--timeout",
+      "1",
+      "--json",
+    ]);
 
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
