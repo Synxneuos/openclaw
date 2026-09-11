@@ -138,7 +138,7 @@ suite.define(() => {
           const composer = page.getByRole("textbox", { name: "Chat composer", exact: true });
           await composer.waitFor({ state: "visible" });
           await composer.fill("/model thinking-fixture/no-effort");
-          await composer.press("Enter");
+          await page.getByRole("button", { name: "Send message", exact: true }).click();
           await expect
             .poll(async () => {
               const listed: SessionsListResult = JSON.parse(
