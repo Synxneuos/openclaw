@@ -79,6 +79,13 @@ available, preserving bundled trust. External path installs keep their existing
 classification. The live plugin files and host links stay unchanged. Channels,
 cron, automatic updates, and other side services are suppressed in this canary.
 
+The 2026.9.3 and 2026.9.4 updaters do not identify their rehearsal copies
+explicitly. The target Doctor recognizes their complete private layout, verifies
+the copied data and the running parent, and reports a legacy-rehearsal warning.
+Live state, unknown owners, and migration data outside the copy remain refused.
+Newer drivers keep their explicit recovery identity checks. This compatibility
+path remains until those releases are no longer supported upgrade sources.
+
 Schema checks also use private SQLite copies so inspection does not create or
 modify WAL sidecars beside live databases. Each schema inspection has a
 30-second deadline; if compatibility cannot be verified, rollback is refused.
