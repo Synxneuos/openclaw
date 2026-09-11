@@ -502,6 +502,7 @@ async function compactResolvedContextEngine(
     selectedPreparedHarness,
     providerUsesProfileScopedModelMetadata,
   } = await prepareCompactionHarnessAuth({
+    preparedModelRuntime,
     ...params,
     provider: ceProvider,
     metadataProvider: ceRuntimeProvider,

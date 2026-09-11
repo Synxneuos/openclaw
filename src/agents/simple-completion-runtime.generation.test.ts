@@ -9,6 +9,7 @@ import type { SimpleCompletionModelResolver } from "./simple-completion-scope.js
 const mocks = vi.hoisted(() => ({
   acquireRuntimeLease: vi.fn(),
   getApiKeyForModel: vi.fn(),
+  ensureAuthProfileStore: vi.fn(),
   prepareProviderRuntimeAuth: vi.fn(),
   resolvePluginMetadataSnapshot: vi.fn(),
   publishedGeneration: "A",
@@ -34,6 +35,10 @@ vi.mock("../plugins/runtime/generation-scope.js", async () => {
       generation.run(snapshot.testGeneration ?? "unknown", run),
   };
 });
+
+vi.mock("./auth-profiles/store-runtime.js", () => ({
+  ensureAuthProfileStore: mocks.ensureAuthProfileStore,
+}));
 
 vi.mock("./model-auth.js", () => ({
   applySecretRefHeaderSentinels: (model: Model) => model,
@@ -86,6 +91,7 @@ beforeEach(() => {
   mocks.publishedGeneration = "A";
   mocks.acquireRuntimeLease.mockReset();
   mocks.getApiKeyForModel.mockReset();
+  mocks.ensureAuthProfileStore.mockReset().mockReturnValue({ version: 1, profiles: {} });
   mocks.prepareProviderRuntimeAuth.mockReset();
   mocks.resolvePluginMetadataSnapshot
     .mockReset()
@@ -142,6 +148,12 @@ it("keeps route rematerialization and runtime auth on the supplied generation", 
       };
     },
   );
+  mocks.ensureAuthProfileStore.mockReturnValue({
+    version: 1,
+    profiles: {
+      "openai:platform": { type: "api_key", provider: "openai", key: "sk-platform" },
+    },
+  });
   mocks.getApiKeyForModel.mockImplementation(async () => {
     await Promise.resolve();
     mocks.publishedGeneration = "B";
@@ -185,7 +197,7 @@ it("acquires direct completion runtime for the exact selected model", async () =
   });
 
   const acquired = await acquireSimpleCompletionModel({
-    cfg: {},
+    cfg: { models: { providers: { ollama: { baseUrl: "http://127.0.0.1:11434", models: [] } } } },
     agentId: "main",
     provider: "ollama",
     modelId: "qwen3:0.6b",
@@ -226,7 +238,7 @@ it("selects an explicit agent completion model before runtime acquisition", asyn
   });
 
   const result = await acquireSimpleCompletionModelForAgent({
-    cfg: {},
+    cfg: { models: { providers: { ollama: { baseUrl: "http://127.0.0.1:11434", models: [] } } } },
     agentId: "main",
     modelRef: "ollama/qwen3:0.6b",
     modelResolver,
