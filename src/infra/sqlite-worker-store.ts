@@ -9,7 +9,6 @@ import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { createDeferredCore } from "../shared/deferred.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { INCOGNITO_AGENT_SQLITE_BASENAME } from "../state/openclaw-agent-db.paths.js";
-import { hasErrnoCode } from "./errno.js";
 import { runtimeProcessEntrypoints } from "./runtime-process-entrypoints.js";
 import { resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
 import {
@@ -19,6 +18,7 @@ import {
   type SqliteWorkerRequest,
   type SqliteWorkerStore,
 } from "./sqlite-worker-contract.js";
+import { readDatabasePathIdentity } from "./sqlite-worker-identity.js";
 
 export type {
   SqliteWorkerBackend,
@@ -32,6 +32,13 @@ const MAX_STORES = 64;
 const MAX_REQUESTS = 128;
 const MAX_QUEUED_BYTES = 64 * 1024 * 1024;
 const runOutsideCaller = AsyncLocalStorage.snapshot();
+
+type SqliteWorkerStoreOptions = {
+  moduleUrl: URL;
+  databasePath: string;
+  input: unknown;
+  existingOnly?: boolean;
+};
 
 type RequestBody = SqliteWorkerRequest extends infer Request
   ? Request extends SqliteWorkerRequest
@@ -81,48 +88,6 @@ export class SqliteWorkerError extends Error {
   }
 }
 
-async function readDatabasePathIdentity(databasePath: string): Promise<{
-  key: string;
-  canonicalPath: string;
-}> {
-  const file = await stat(databasePath, { bigint: true }).catch((error: unknown) => {
-    if (hasErrnoCode(error, "ENOENT")) {
-      return undefined;
-    }
-    throw error;
-  });
-  if (file) {
-    if (!file.isFile()) {
-      throw new Error("SQLite worker database path must identify a regular file");
-    }
-    const canonicalPath = await realpath(databasePath);
-    const canonicalFile = await stat(canonicalPath, { bigint: true });
-    if (file.dev !== canonicalFile.dev || file.ino !== canonicalFile.ino) {
-      throw new Error("SQLite database pathname changed during admission");
-    }
-    return { key: `file:${file.dev}:${file.ino}`, canonicalPath };
-  }
-  // Resolve the existing ancestor before a first open so directory aliases share admission.
-  const missing: string[] = [];
-  let ancestor = databasePath;
-  while (true) {
-    try {
-      const canonicalPath = path.join(await realpath(ancestor), ...missing);
-      return { key: `path:${canonicalPath}`, canonicalPath };
-    } catch (error) {
-      if (!hasErrnoCode(error, "ENOENT")) {
-        throw error;
-      }
-      missing.unshift(path.basename(ancestor));
-      const parent = path.dirname(ancestor);
-      if (parent === ancestor) {
-        throw error;
-      }
-      ancestor = parent;
-    }
-  }
-}
-
 class SqliteWorkerBroker {
   private readonly actors = new Map<string, Actor>();
   private readonly slots = new Set<Slot>();
@@ -135,11 +100,9 @@ class SqliteWorkerBroker {
   private admissionTail: Promise<void> = Promise.resolve();
   private draining?: Promise<void>;
 
-  open<Operations extends SqliteWorkerOperations>(options: {
-    moduleUrl: URL;
-    databasePath: string;
-    input: unknown;
-  }): Promise<SqliteWorkerStore<Operations>> {
+  open<Operations extends SqliteWorkerOperations>(
+    options: SqliteWorkerStoreOptions,
+  ): Promise<SqliteWorkerStore<Operations> | undefined> {
     const basename = path.basename(options.databasePath);
     if (
       !options.databasePath ||
@@ -163,12 +126,18 @@ class SqliteWorkerBroker {
     }
     const client = {};
     this.clients.add(client);
-    let snapshot: { moduleUrl: URL; databasePath: string; input: Buffer };
+    let snapshot: {
+      moduleUrl: URL;
+      databasePath: string;
+      input: Buffer;
+      existingOnly: boolean;
+    };
     try {
       snapshot = {
         moduleUrl: new URL(options.moduleUrl),
         databasePath: path.resolve(options.databasePath),
         input: serialize(options.input),
+        existingOnly: options.existingOnly === true,
       };
     } catch (error) {
       this.clients.delete(client);
@@ -206,9 +175,10 @@ class SqliteWorkerBroker {
       moduleUrl: URL;
       databasePath: string;
       input: Buffer;
+      existingOnly: boolean;
     },
     client: object,
-  ): Promise<SqliteWorkerStore<Operations>> {
+  ): Promise<SqliteWorkerStore<Operations> | undefined> {
     if (
       options.moduleUrl.protocol !== "file:" ||
       options.moduleUrl.search ||
@@ -219,16 +189,9 @@ class SqliteWorkerBroker {
     const databasePath = path.resolve(options.databasePath);
     const input = options.input;
     const inputHash = createHash("sha256").update(input).digest("hex");
-    const [identity, modulePath] = await Promise.all([
-      readDatabasePathIdentity(databasePath),
-      realpath(fileURLToPath(options.moduleUrl)),
-    ]);
+    const identity = await readDatabasePathIdentity(databasePath);
     const { key, canonicalPath } = identity;
     const admittedPaths = new Set([databasePath, canonicalPath]);
-    const moduleUrl = pathToFileURL(modulePath).href;
-    if (!/\.[cm]?[jt]s$/.test(modulePath) || !(await stat(modulePath)).isFile()) {
-      throw new Error("SQLite worker backend must identify a JavaScript or TypeScript file");
-    }
     if (
       [...this.actors.values()].some(
         (entry) =>
@@ -239,6 +202,15 @@ class SqliteWorkerBroker {
       throw new Error(
         "SQLite database pathname changed while its worker owner is active; close the existing store first",
       );
+    }
+    if (options.existingOnly && !key.startsWith("file:")) {
+      this.clients.delete(client);
+      return undefined;
+    }
+    const modulePath = await realpath(fileURLToPath(options.moduleUrl));
+    const moduleUrl = pathToFileURL(modulePath).href;
+    if (!/\.[cm]?[jt]s$/.test(modulePath) || !(await stat(modulePath)).isFile()) {
+      throw new Error("SQLite worker backend must identify a JavaScript or TypeScript file");
     }
     let actor = this.actors.get(key);
     if (actor?.closing) {
@@ -279,6 +251,7 @@ class SqliteWorkerBroker {
           actor: actor.id,
           moduleUrl,
           databasePath,
+          ...(options.existingOnly ? { existingIdentity: key } : {}),
           input,
           ...(/\.[cm]?ts$/.test(modulePath)
             ? { sourceLoaderUrl: import.meta.resolve("tsx/esm/api") }
@@ -658,11 +631,18 @@ class SqliteWorkerBroker {
   }
 }
 
-export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>(options: {
-  moduleUrl: URL;
-  databasePath: string;
-  input: unknown;
-}): Promise<SqliteWorkerStore<Operations>> {
+export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>(
+  options: SqliteWorkerStoreOptions & { existingOnly: true },
+): Promise<SqliteWorkerStore<Operations> | undefined>;
+export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>(
+  options: SqliteWorkerStoreOptions & { existingOnly?: false },
+): Promise<SqliteWorkerStore<Operations>>;
+export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>(
+  options: SqliteWorkerStoreOptions,
+): Promise<SqliteWorkerStore<Operations> | undefined>;
+export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>(
+  options: SqliteWorkerStoreOptions,
+): Promise<SqliteWorkerStore<Operations> | undefined> {
   if (!isMainThread) {
     return Promise.reject(
       new SqliteWorkerError(
@@ -675,5 +655,5 @@ export function openSqliteWorkerStore<Operations extends SqliteWorkerOperations>
     Symbol.for("openclaw.sqliteWorkerBroker"),
     () => new SqliteWorkerBroker(),
     (broker) => broker.close(),
-  ).open(options);
+  ).open<Operations>(options);
 }
