@@ -82,6 +82,9 @@ beforeEach(async () => {
   vi.mocked(scope.listAgentEntries).mockImplementation(actualScope.listAgentEntries);
   vi.mocked(scope.resolveSessionAgentId).mockImplementation(actualScope.resolveSessionAgentId);
   vi.mocked(scope.resolveSessionAgentIds).mockImplementation(actualScope.resolveSessionAgentIds);
+  vi.mocked(scope.resolveRunModelFallbacksOverride).mockImplementation(
+    actualScope.resolveRunModelFallbacksOverride,
+  );
   requestPreparedCompaction.mockReset();
   limitHistoryTurnsMock.mockImplementation((messages) => messages);
   hookRunner.hasHooks.mockImplementation(

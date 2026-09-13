@@ -207,6 +207,11 @@ function resolveCompactionFallbacksOverride(
     params.modelFallbacksOverride ??
     resolveRunModelFallbacksOverride({
       cfg: params.config,
+      agentId:
+        params.agentId ??
+        params.sessionTarget?.agentId ??
+        params.sandboxAgentId ??
+        params.contextEngineAgentId,
       sessionKey: params.sessionKey,
     })
   );

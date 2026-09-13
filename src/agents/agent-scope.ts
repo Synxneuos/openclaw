@@ -32,6 +32,7 @@ import {
   resolveAgentConfig,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
+  tryResolveAmbientOwnerAgentId,
   tryResolveLegacyCompatibilityAgentId,
 } from "./agent-scope-config.js";
 import { resolveCanonicalWorkspacePath } from "./workspace-state-identity.js";
@@ -591,14 +592,19 @@ export function resolveRunModelFallbacksOverride(params: {
     return undefined;
   }
   const explicitAgentId = normalizeOptionalString(params.agentId);
-  const agentId = explicitAgentId
-    ? normalizeAgentId(explicitAgentId)
-    : listAgentIds(params.cfg).length > 0
-      ? resolveSessionAgentIds({
-          config: params.cfg,
-          sessionKey: params.sessionKey ?? undefined,
-        }).sessionAgentId
-      : undefined;
+  let agentId: string | undefined;
+  if (explicitAgentId) {
+    agentId = normalizeAgentId(explicitAgentId);
+  } else if (listAgentIds(params.cfg).length > 0) {
+    try {
+      agentId = resolveSessionAgentIds({
+        config: params.cfg,
+        sessionKey: params.sessionKey ?? undefined,
+      }).sessionAgentId;
+    } catch {
+      agentId = tryResolveAmbientOwnerAgentId(params.cfg);
+    }
+  }
   return agentId ? resolveAgentModelFallbacksOverride(params.cfg, agentId) : undefined;
 }
 

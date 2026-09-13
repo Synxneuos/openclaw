@@ -589,6 +589,64 @@ describe("resolveAgentConfig", () => {
         sessionKey: "agent:support:session",
       }),
     ).toEqual(["openai/gpt-5.4"]);
+
+    const explicitFleetCfg: OpenClawConfig = {
+      agents: {
+        ownership: "explicit",
+        list: [
+          {
+            id: "main",
+            model: { fallbacks: ["openai/gpt-5.4"] },
+          },
+          {
+            id: "support",
+            model: { fallbacks: ["anthropic/claude-3-5-sonnet"] },
+          },
+        ],
+        defaults: {
+          systemAgent: { agentId: "main" },
+        },
+      },
+    };
+
+    expect(
+      resolveRunModelFallbacksOverride({
+        cfg: explicitFleetCfg,
+        agentId: "support",
+        sessionKey: "global",
+      }),
+    ).toEqual(["anthropic/claude-3-5-sonnet"]);
+
+    expect(
+      resolveRunModelFallbacksOverride({
+        cfg: explicitFleetCfg,
+        agentId: undefined,
+        sessionKey: "global",
+      }),
+    ).toEqual(["openai/gpt-5.4"]);
+
+    const explicitFleetNoSystemAgentCfg: OpenClawConfig = {
+      agents: {
+        ownership: "explicit",
+        list: [
+          {
+            id: "main",
+            model: { fallbacks: ["openai/gpt-5.4"] },
+          },
+          {
+            id: "support",
+          },
+        ],
+      },
+    };
+
+    expect(
+      resolveRunModelFallbacksOverride({
+        cfg: explicitFleetNoSystemAgentCfg,
+        agentId: undefined,
+        sessionKey: "global",
+      }),
+    ).toBeUndefined();
   });
 
   it("resolves throttled primary probes for auto fallback selections", () => {
