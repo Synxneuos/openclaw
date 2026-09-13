@@ -952,4 +952,60 @@ describe("dispatchReplyFromConfig reply_dispatch hook", () => {
       expect(dispatcher.sendFinalReply).toHaveBeenNthCalledWith(2, replies[1]);
     },
   );
+
+  describe("ACP session takeover replay guard (#147010)", () => {
+    it("never replays an ACP session through the ordinary reply resolver when reply_dispatch returns unhandled", async () => {
+      const replyResolver = vi.fn(async () => ({ text: "ordinary resolver reply" }));
+      let hookCalled = 0;
+      hookMocks.runner.runReplyDispatch.mockImplementation(async () => {
+        hookCalled++;
+        return undefined;
+      });
+
+      const dispatcher = createDispatcher();
+      const result = await dispatchReplyFromConfig({
+        ctx: { ...createHookCtx(), SessionKey: "agent:main:acp:session-1" },
+        cfg: emptyConfig,
+        dispatcher,
+        replyResolver,
+      });
+
+      expect(hookCalled).toBe(1);
+      expect(replyResolver).not.toHaveBeenCalled();
+      expect(result.queuedFinal).toBe(true);
+      expect(dispatcher.sendFinalReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "ACP turn failed before completion.",
+          isError: true,
+        }),
+      );
+    });
+
+    it("never replays an ACP session through the ordinary reply resolver when reply_dispatch throws", async () => {
+      const replyResolver = vi.fn(async () => ({ text: "ordinary resolver reply" }));
+      let hookCalled = 0;
+      hookMocks.runner.runReplyDispatch.mockImplementation(async () => {
+        hookCalled++;
+        throw new Error("ACP connection timed out");
+      });
+
+      const dispatcher = createDispatcher();
+      const result = await dispatchReplyFromConfig({
+        ctx: { ...createHookCtx(), SessionKey: "agent:main:acp:session-2" },
+        cfg: emptyConfig,
+        dispatcher,
+        replyResolver,
+      });
+
+      expect(hookCalled).toBe(1);
+      expect(replyResolver).not.toHaveBeenCalled();
+      expect(result.queuedFinal).toBe(true);
+      expect(dispatcher.sendFinalReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "ACP turn failed before completion.",
+          isError: true,
+        }),
+      );
+    });
+  });
 });

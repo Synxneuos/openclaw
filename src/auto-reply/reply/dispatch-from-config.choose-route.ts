@@ -37,6 +37,7 @@ import type { PrepareDispatchOperationReadyState } from "./dispatch-from-config.
 import { runReplyDispatchTakeover } from "./dispatch-from-config.reply-dispatch-hook.js";
 import {
   maybeRefuseRestrictedRuntimeTakeover,
+  maybeRefuseUncompletedAcpDispatchTakeover,
   runtimeTakeoverHooksAllowed,
 } from "./dispatch-from-config.restricted-runtime.js";
 import { createSessionMetadataChangeNotifier } from "./dispatch-from-config.session-metadata.js";
@@ -638,6 +639,17 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   const replyDispatchTakeover = await runReplyDispatchTakeover(state, shouldSendToolSummaries);
   if (replyDispatchTakeover) {
     return replyDispatchTakeover;
+  }
+
+  const uncompletedAcpRefusal = await maybeRefuseUncompletedAcpDispatchTakeover({
+    state,
+    sendFinalPayload,
+  });
+  if (uncompletedAcpRefusal) {
+    return {
+      status: "complete" as const,
+      result: attachSourceReplyDeliveryMode(uncompletedAcpRefusal),
+    };
   }
 
   const dispatchAcquisition = await state.ensureDispatchReplyOperation(

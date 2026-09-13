@@ -47,3 +47,37 @@ export async function maybeRefuseRestrictedRuntimeTakeover(params: {
   state.completeDispatchReplyOperation();
   return { queuedFinal: refusal.queuedFinal, counts };
 }
+
+export const ACP_DISPATCH_TAKEOVER_FAILED_ERROR = "ACP turn failed before completion.";
+
+export async function maybeRefuseUncompletedAcpDispatchTakeover(params: {
+  state: PrepareDispatchOperationReadyState;
+  sendFinalPayload: (
+    payload: ReplyPayload,
+    options: { abortSignal?: AbortSignal; deliveryId: string },
+  ) => Promise<{ queuedFinal: boolean; routedFinalCount: number }>;
+}): Promise<{ queuedFinal: boolean; counts: Record<ReplyDispatchKind, number> } | undefined> {
+  const { state } = params;
+  if (state.dispatchKind !== "acp") {
+    return undefined;
+  }
+  const refusal = state.suppressDelivery
+    ? { queuedFinal: false, routedFinalCount: 0 }
+    : await params.sendFinalPayload(
+        { text: ACP_DISPATCH_TAKEOVER_FAILED_ERROR, isError: true },
+        {
+          abortSignal: state.getPreDispatchAbortSignal(),
+          deliveryId: "acp-takeover-failed",
+        },
+      );
+  const counts = state.dispatcher.getQueuedCounts();
+  counts.final += refusal.routedFinalCount;
+  state.recordProcessed("error", {
+    reason: "acp_takeover_failed",
+    error: ACP_DISPATCH_TAKEOVER_FAILED_ERROR,
+  });
+  state.markIdle("message_completed");
+  state.commitInboundDedupeIfClaimed();
+  state.completeDispatchReplyOperation();
+  return { queuedFinal: refusal.queuedFinal, counts };
+}

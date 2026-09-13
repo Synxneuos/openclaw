@@ -73,7 +73,15 @@ export async function runReplyDispatchTakeover(
   state: PrepareDispatchOperationReadyState,
   shouldSendToolSummaries: () => boolean,
 ): Promise<{ status: "complete"; result: DispatchFromConfigResult } | undefined> {
-  const result = await runReplyDispatchHook(state, { shouldSendToolSummaries });
+  let result: Awaited<ReturnType<typeof runReplyDispatchHook>>;
+  try {
+    result = await runReplyDispatchHook(state, { shouldSendToolSummaries });
+  } catch (err) {
+    if (state.dispatchKind === "acp") {
+      return undefined;
+    }
+    throw err;
+  }
   if (!result?.handled) {
     return undefined;
   }
