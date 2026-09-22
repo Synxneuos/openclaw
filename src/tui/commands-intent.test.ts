@@ -114,39 +114,12 @@ describe("matchSlashKeywords", () => {
   });
 });
 
-describe("createTuiAutocompleteProvider intent integration", () => {
-  it("suggests canonical slash commands from natural language prompt intent", async () => {
-    const commands = [
-      { name: "new", description: "Spawn a new isolated session" },
-      { name: "model", description: "Set model (or open picker)" },
-    ];
-    const provider = createTuiAutocompleteProvider(commands, process.cwd());
-    const suggestions = await provider.getSuggestions(["reset chat"], 0, 10, {
-      signal: new AbortController().signal,
-    });
-
-    expect(suggestions).not.toBeNull();
-    expect(suggestions?.prefix).toBe("reset chat");
-    expect(suggestions?.items[0]?.value).toBe("/new");
-
-    const applied = provider.applyCompletion(
-      ["reset chat"],
-      0,
-      10,
-      suggestions!.items[0]!,
-      suggestions!.prefix,
-    );
-    expect(applied).toEqual({
-      cursorCol: "/new ".length,
-      cursorLine: 0,
-      lines: ["/new "],
-    });
-  });
-
+describe("createTuiAutocompleteProvider keyword discovery", () => {
   it("discovers slash commands from keyword tags on slash-prefixed input", async () => {
     const commands = [
       { name: "usage", description: "Toggle per-response usage line or show cost summary" },
       { name: "model", description: "Set model (or open picker)" },
+      { name: "reset", description: "Reset the current session" },
     ];
     const provider = createTuiAutocompleteProvider(commands, process.cwd());
     const suggestions = await provider.getSuggestions(["/pricing"], 0, 8, {
@@ -154,16 +127,38 @@ describe("createTuiAutocompleteProvider intent integration", () => {
     });
 
     expect(suggestions).not.toBeNull();
-    expect(suggestions?.items.some((it) => it.value === "/usage")).toBe(true);
+    const usageItem = suggestions?.items.find((it) => it.value === "usage");
+    expect(usageItem).toBeDefined();
+    expect(usageItem?.label).toBe("/usage");
+
+    // Verify applyCompletion contract uses bare command value and produces exactly '/usage ' without '//'
+    const applied = provider.applyCompletion(["/pricing"], 0, 8, usageItem!, suggestions!.prefix);
+    expect(applied).toEqual({
+      cursorCol: "/usage ".length,
+      cursorLine: 0,
+      lines: ["/usage "],
+    });
   });
 
-  it("ignores short input under 3 characters for intent suggestions", async () => {
-    const commands = [{ name: "new", description: "Spawn a new isolated session" }];
+  it("maps cls keyword to reset command", async () => {
+    const commands = [{ name: "reset", description: "Reset the current session" }];
     const provider = createTuiAutocompleteProvider(commands, process.cwd());
-    const suggestions = await provider.getSuggestions(["re"], 0, 2, {
+    const suggestions = await provider.getSuggestions(["/cls"], 0, 4, {
       signal: new AbortController().signal,
     });
 
-    expect(suggestions).toBeNull();
+    expect(suggestions).not.toBeNull();
+    const resetItem = suggestions?.items.find((it) => it.value === "reset");
+    expect(resetItem).toBeDefined();
+  });
+
+  it("preserves regular draft typing and does not hijack ordinary text", async () => {
+    const commands = [{ name: "help", description: "Show slash command help" }];
+    const provider = createTuiAutocompleteProvider(commands, process.cwd());
+    // Regular conversational typing without leading slash must return null
+    const natural = await provider.getSuggestions(["help me edit ./src/"], 0, 19, {
+      signal: new AbortController().signal,
+    });
+    expect(natural).toBeNull();
   });
 });

@@ -27,11 +27,11 @@ export const INTENT_RULES: readonly IntentRule[] = [
     command: "new",
     description: "Spawn a new isolated session",
   },
-  // Terminal clear screen -> /clear
+  // Session reset -> /reset
   {
-    pattern: /\b(clear\s+screen|cls|clear\s+terminal|clean\s+screen|screen\s+clear)\b/i,
-    command: "clear",
-    description: "Clear the terminal screen",
+    pattern: /\b(clear\s+screen|cls|clean\s+screen|clear\s+session|reset\s+view)\b/i,
+    command: "reset",
+    description: "Reset the current session",
   },
   // Model switching -> /model
   {
@@ -131,8 +131,7 @@ export const KEYWORD_TAGS: Record<string, readonly string[]> = {
   ],
   model: ["switch", "llm", "provider", "select", "choose", "badlo", "pick"],
   new: ["fresh", "start", "restart", "wipe", "nayi", "naya", "clean"],
-  reset: ["clean", "wipe", "restart", "fresh"],
-  clear: ["cls", "screen", "terminal", "clean"],
+  reset: ["clean", "wipe", "restart", "fresh", "cls", "clear"],
   think: ["thinking", "reasoning", "thought", "deep", "depth"],
   reasoning: ["thinking", "depth", "stream", "deliberation"],
   fast: ["speed", "quick", "rapid", "turbo", "jaldi"],
