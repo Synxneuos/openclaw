@@ -64,7 +64,6 @@ export function createTuiAutocompleteProvider(
   const commandNames = new Set(commands.map((cmd) => cmd.name));
 
   return sanitizeAutocompleteProvider({
-    triggerCharacters: inner.triggerCharacters,
     async getSuggestions(lines, cursorLine, cursorCol, options) {
       const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
       const isAttachment = /(?:^|[\s='"])@(?:"[^"]*|[^\s='"]*)$/u.test(textBeforeCursor);

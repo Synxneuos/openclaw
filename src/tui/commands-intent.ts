@@ -29,7 +29,7 @@ export const INTENT_RULES: readonly IntentRule[] = [
   },
   // Session reset -> /reset
   {
-    pattern: /\b(clear\s+screen|cls|clean\s+screen|clear\s+session|reset\s+view)\b/i,
+    pattern: /\b(clear\s+session|reset\s+session|reset\s+conversation)\b/i,
     command: "reset",
     description: "Reset the current session",
   },
@@ -131,7 +131,7 @@ export const KEYWORD_TAGS: Record<string, readonly string[]> = {
   ],
   model: ["switch", "llm", "provider", "select", "choose", "badlo", "pick"],
   new: ["fresh", "start", "restart", "wipe", "nayi", "naya", "clean"],
-  reset: ["clean", "wipe", "restart", "fresh", "cls", "clear"],
+  reset: ["restart", "reboot", "reinitialize"],
   think: ["thinking", "reasoning", "thought", "deep", "depth"],
   reasoning: ["thinking", "depth", "stream", "deliberation"],
   fast: ["speed", "quick", "rapid", "turbo", "jaldi"],

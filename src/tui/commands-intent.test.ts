@@ -140,10 +140,10 @@ describe("createTuiAutocompleteProvider keyword discovery", () => {
     });
   });
 
-  it("maps cls keyword to reset command", async () => {
+  it("maps restart keyword to reset command", async () => {
     const commands = [{ name: "reset", description: "Reset the current session" }];
     const provider = createTuiAutocompleteProvider(commands, process.cwd());
-    const suggestions = await provider.getSuggestions(["/cls"], 0, 4, {
+    const suggestions = await provider.getSuggestions(["/restart"], 0, 8, {
       signal: new AbortController().signal,
     });
 
