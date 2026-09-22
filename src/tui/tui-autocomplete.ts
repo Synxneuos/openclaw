@@ -4,6 +4,7 @@ import {
   type AutocompleteProvider,
   type SlashCommand,
 } from "@earendil-works/pi-tui";
+import { matchPromptIntent, matchSlashKeywords } from "./commands-intent.js";
 import { isTerminalSafeAutocompleteValue, sanitizeRenderableLine } from "./tui-formatters.js";
 
 const originalSafeItem = Symbol("originalSafeItem");
@@ -60,17 +61,98 @@ export function createTuiAutocompleteProvider(
   fdPath?: string,
 ): AutocompleteProvider {
   const inner = new CombinedAutocompleteProvider(commands, basePath, fdPath);
+  const commandNames = new Set(commands.map((cmd) => cmd.name));
+
   return sanitizeAutocompleteProvider({
-    getSuggestions(lines, cursorLine, cursorCol, options) {
+    triggerCharacters: inner.triggerCharacters,
+    async getSuggestions(lines, cursorLine, cursorCol, options) {
       const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
       const isAttachment = /(?:^|[\s='"])@(?:"[^"]*|[^\s='"]*)$/u.test(textBeforeCursor);
-      const isNaturalCompletion = isAttachment || textBeforeCursor.startsWith("/");
-      if (!options.force && !isNaturalCompletion) {
-        return Promise.resolve(null);
+      if (isAttachment) {
+        return inner.getSuggestions(lines, cursorLine, cursorCol, options);
+      }
+
+      if (textBeforeCursor.startsWith("/")) {
+        const standardSuggestions = await inner.getSuggestions(
+          lines,
+          cursorLine,
+          cursorCol,
+          options,
+        );
+        const slashWordMatch = /^\/([^\s]+)$/u.exec(textBeforeCursor);
+        if (slashWordMatch) {
+          const typedWord = slashWordMatch[1]!;
+          const keywordMatches = matchSlashKeywords(typedWord, commandNames);
+          if (keywordMatches.length > 0) {
+            const existingValues = new Set(standardSuggestions?.items.map((it) => it.value) ?? []);
+            const newItems = keywordMatches
+              .filter((m) => !existingValues.has(`/${m.command}`))
+              .map((m) => {
+                const existingCmd = commands.find((c) => c.name === m.command);
+                return {
+                  value: `/${m.command}`,
+                  label: `/${m.command}`,
+                  description: existingCmd?.description
+                    ? `${existingCmd.description} (matched '${m.matchedKeyword}')`
+                    : `Matched keyword '${m.matchedKeyword}'`,
+                };
+              });
+            if (newItems.length > 0) {
+              return {
+                prefix: textBeforeCursor,
+                items: [...(standardSuggestions?.items ?? []), ...newItems],
+              };
+            }
+          }
+        }
+        return standardSuggestions;
+      }
+
+      const trimmed = textBeforeCursor.trim();
+      if (trimmed.length >= 3 && trimmed.length <= 100) {
+        const intentMatches = matchPromptIntent(trimmed);
+        if (intentMatches.length > 0) {
+          const items = intentMatches
+            .filter((m) => commandNames.size === 0 || commandNames.has(m.command))
+            .map((m) => {
+              const existingCmd = commands.find((c) => c.name === m.command);
+              return {
+                value: `/${m.command}`,
+                label: `/${m.command}`,
+                description: existingCmd?.description ?? m.description,
+              };
+            });
+          if (items.length > 0) {
+            return {
+              prefix: textBeforeCursor,
+              items,
+            };
+          }
+        }
+      }
+
+      if (!options.force) {
+        return null;
       }
       return inner.getSuggestions(lines, cursorLine, cursorCol, options);
     },
-    applyCompletion: (...args) => inner.applyCompletion(...args),
+    applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+      if (!prefix.startsWith("/") && item.value.startsWith("/")) {
+        const currentLine = lines[cursorLine] ?? "";
+        const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
+        const afterCursor = currentLine.slice(cursorCol);
+        const newLine = `${beforePrefix}${item.value} ${afterCursor}`;
+        const newCursorCol = beforePrefix.length + item.value.length + 1;
+        const newLines = [...lines];
+        newLines[cursorLine] = newLine;
+        return {
+          lines: newLines,
+          cursorLine,
+          cursorCol: newCursorCol,
+        };
+      }
+      return inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+    },
     shouldTriggerFileCompletion: (...args) => inner.shouldTriggerFileCompletion(...args),
   });
 }

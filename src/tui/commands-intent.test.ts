@@ -1,0 +1,169 @@
+// Tests for natural language prompt intent matching and keyword slash discovery in OpenClaw TUI.
+import { describe, expect, it } from "vitest";
+import { matchPromptIntent, matchSlashKeywords } from "./commands-intent.js";
+import { createTuiAutocompleteProvider } from "./tui-autocomplete.js";
+
+describe("matchPromptIntent", () => {
+  it("matches session reset intents across English, Hindi, and Spanish", () => {
+    const prompts = [
+      "reset chat",
+      "clear conversation",
+      "new session",
+      "nayi chat",
+      "chat reset",
+      "nueva sesion",
+    ];
+    for (const prompt of prompts) {
+      const matches = matchPromptIntent(prompt);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches[0]?.command).toBe("new");
+    }
+  });
+
+  it("matches model switching intents", () => {
+    const prompts = ["switch model", "change model", "model badlo", "cambiar modelo"];
+    for (const prompt of prompts) {
+      const matches = matchPromptIntent(prompt);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches[0]?.command).toBe("model");
+    }
+  });
+
+  it("matches cost and token usage intents", () => {
+    const prompts = [
+      "session cost",
+      "total spend",
+      "kitna kharcha hua",
+      "token usage",
+      "how many tokens",
+    ];
+    for (const prompt of prompts) {
+      const matches = matchPromptIntent(prompt);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches[0]?.command).toBe("usage");
+    }
+  });
+
+  it("matches thinking level intents", () => {
+    const prompts = ["thinking level", "change thinking", "soch badlo"];
+    for (const prompt of prompts) {
+      const matches = matchPromptIntent(prompt);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches[0]?.command).toBe("think");
+    }
+  });
+
+  it("matches fast mode intents", () => {
+    const prompts = ["fast mode", "faster response", "jaldi karo"];
+    for (const prompt of prompts) {
+      const matches = matchPromptIntent(prompt);
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches[0]?.command).toBe("fast");
+    }
+  });
+
+  it("ignores input shorter than 3 characters", () => {
+    expect(matchPromptIntent("re")).toEqual([]);
+    expect(matchPromptIntent("a")).toEqual([]);
+    expect(matchPromptIntent("")).toEqual([]);
+  });
+
+  it("ignores excessively long prompts to avoid false positives", () => {
+    const longPrompt =
+      "Please write a TypeScript function that parses OpenAPI schemas and transforms endpoints into strongly typed RPC handlers.";
+    expect(matchPromptIntent(longPrompt)).toEqual([]);
+  });
+
+  it("ignores regular unrelated conversational prompts", () => {
+    expect(matchPromptIntent("hello there how are you today")).toEqual([]);
+  });
+});
+
+describe("matchSlashKeywords", () => {
+  it("matches keywords to canonical commands", () => {
+    const tokenMatches = matchSlashKeywords("token");
+    expect(tokenMatches.some((m) => m.command === "usage")).toBe(true);
+
+    const pricingMatches = matchSlashKeywords("pricing");
+    expect(pricingMatches.some((m) => m.command === "usage")).toBe(true);
+
+    const switchMatches = matchSlashKeywords("switch");
+    expect(switchMatches.some((m) => m.command === "model")).toBe(true);
+  });
+
+  it("ranks exact tag matches ahead of prefix and substring matches", () => {
+    const matches = matchSlashKeywords("spend");
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0]?.command).toBe("usage");
+    expect(matches[0]?.score).toBe(100);
+  });
+
+  it("filters suggestions using availableCommands when provided", () => {
+    const onlyModel = new Set(["model"]);
+    const tokenMatches = matchSlashKeywords("token", onlyModel);
+    expect(tokenMatches).toEqual([]);
+
+    const switchMatches = matchSlashKeywords("switch", onlyModel);
+    expect(switchMatches.length).toBe(1);
+    expect(switchMatches[0]?.command).toBe("model");
+  });
+
+  it("returns empty array for short words", () => {
+    expect(matchSlashKeywords("a")).toEqual([]);
+    expect(matchSlashKeywords("")).toEqual([]);
+  });
+});
+
+describe("createTuiAutocompleteProvider intent integration", () => {
+  it("suggests canonical slash commands from natural language prompt intent", async () => {
+    const commands = [
+      { name: "new", description: "Spawn a new isolated session" },
+      { name: "model", description: "Set model (or open picker)" },
+    ];
+    const provider = createTuiAutocompleteProvider(commands, process.cwd());
+    const suggestions = await provider.getSuggestions(["reset chat"], 0, 10, {
+      signal: new AbortController().signal,
+    });
+
+    expect(suggestions).not.toBeNull();
+    expect(suggestions?.prefix).toBe("reset chat");
+    expect(suggestions?.items[0]?.value).toBe("/new");
+
+    const applied = provider.applyCompletion(
+      ["reset chat"],
+      0,
+      10,
+      suggestions!.items[0]!,
+      suggestions!.prefix,
+    );
+    expect(applied).toEqual({
+      cursorCol: "/new ".length,
+      cursorLine: 0,
+      lines: ["/new "],
+    });
+  });
+
+  it("discovers slash commands from keyword tags on slash-prefixed input", async () => {
+    const commands = [
+      { name: "usage", description: "Toggle per-response usage line or show cost summary" },
+      { name: "model", description: "Set model (or open picker)" },
+    ];
+    const provider = createTuiAutocompleteProvider(commands, process.cwd());
+    const suggestions = await provider.getSuggestions(["/pricing"], 0, 8, {
+      signal: new AbortController().signal,
+    });
+
+    expect(suggestions).not.toBeNull();
+    expect(suggestions?.items.some((it) => it.value === "/usage")).toBe(true);
+  });
+
+  it("ignores short input under 3 characters for intent suggestions", async () => {
+    const commands = [{ name: "new", description: "Spawn a new isolated session" }];
+    const provider = createTuiAutocompleteProvider(commands, process.cwd());
+    const suggestions = await provider.getSuggestions(["re"], 0, 2, {
+      signal: new AbortController().signal,
+    });
+
+    expect(suggestions).toBeNull();
+  });
+});

@@ -345,3 +345,10 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "Shift+Enter or Ctrl+J: insert a newline",
   ].join("\n");
 }
+
+export {
+  matchPromptIntent,
+  matchSlashKeywords,
+  type IntentMatch,
+  type KeywordMatch,
+} from "./commands-intent.js";
