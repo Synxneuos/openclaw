@@ -4,7 +4,7 @@ import {
   type AutocompleteProvider,
   type SlashCommand,
 } from "@earendil-works/pi-tui";
-import { matchPromptIntent, matchSlashKeywords } from "./commands-intent.js";
+import { matchSlashKeywords } from "./commands-intent.js";
 import { isTerminalSafeAutocompleteValue, sanitizeRenderableLine } from "./tui-formatters.js";
 
 const originalSafeItem = Symbol("originalSafeItem");
