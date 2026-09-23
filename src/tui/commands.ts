@@ -346,9 +346,4 @@ export function helpText(options: SlashCommandOptions = {}): string {
   ].join("\n");
 }
 
-export {
-  matchPromptIntent,
-  matchSlashKeywords,
-  type IntentMatch,
-  type KeywordMatch,
-} from "./commands-intent.js";
+export { matchSlashKeywords, type KeywordMatch } from "./commands-intent.js";
